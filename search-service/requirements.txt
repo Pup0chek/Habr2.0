@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+elasticsearch
+prometheus_client

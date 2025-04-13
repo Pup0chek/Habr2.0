@@ -1,0 +1,143 @@
+
+services:
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      - content-service
+      - search-service
+      - elasticsearch
+      - postgres
+      - rabbitmq
+    networks:
+      - app-network
+
+  content-service:
+    build:
+      context: ./content-service
+      dockerfile: Dockerfile
+    container_name: content-service
+    ports:
+      - "8002:8002"
+    depends_on:
+      - postgres
+      - rabbitmq
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/articles_db
+      - RABBITMQ_URL=amqp://rabbitmq
+    command: >
+      sh -c "python -m create_tables && uvicorn app.main:app --host 0.0.0.0 --port 8002"
+    networks:
+      - app-network
+
+  search-service:
+    build:
+      context: ./search-service
+      dockerfile: Dockerfile
+    container_name: search-service
+    ports:
+      - "8001:8001"
+    depends_on:
+      - elasticsearch
+    networks:
+      - app-network
+
+  sync-service:
+    build:
+      context: ./sync-service
+      dockerfile: Dockerfile
+    container_name: sync-service
+    depends_on:
+      - rabbitmq
+      - postgres
+      - elasticsearch
+    environment:
+      - ELASTIC_URL=http://elasticsearch:9200
+      - RABBITMQ_URL=amqp://rabbitmq
+    networks:
+      - app-network
+
+  elasticsearch:
+    image: elasticsearch:7.17.10
+    container_name: elasticsearch_for_pet
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:13
+    container_name: postgres_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=articles_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP порт
+      - "15672:15672"  # веб-интерфейс управления RabbitMQ
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "3001:3000"
+    depends_on:
+      - gateway
+      - search-service
+    networks:
+      - app-network
+
+  prometheus:
+    image: prom/prometheus:v2.37.0
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - app-network
+
+  grafana:
+    image: grafana/grafana:9.0.0
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+
+volumes:
+  esdata:
+    driver: local
+  pgdata:
+    driver: local
+  grafana-storage:
+
+networks:
+  app-network:

@@ -1,0 +1,6 @@
+gateway/.venv
+gateway/__pycache__
+gateway/middlewares/__pycache__
+search-service/app/__pycache__
+search-service/services/__pycache__
+frontend/node_modules
