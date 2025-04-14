@@ -28,11 +28,13 @@ services:
       - rabbitmq
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/articles_db
-      - RABBITMQ_URL=amqp://rabbitmq
+      - RABBITMQ_URL=amqp://myuser:mypassword@rabbitmq
     command: >
       sh -c "python -m create_tables && uvicorn app.main:app --host 0.0.0.0 --port 8002"
     networks:
       - app-network
+    volumes:
+      - ./logs:/var/log
 
   search-service:
     build:
@@ -57,7 +59,7 @@ services:
       - elasticsearch
     environment:
       - ELASTIC_URL=http://elasticsearch:9200
-      - RABBITMQ_URL=amqp://rabbitmq
+      - RABBITMQ_URL=amqp://myuser:mypassword@rabbitmq
     networks:
       - app-network
 
@@ -95,6 +97,9 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
+    environment:
+    - RABBITMQ_DEFAULT_USER=myuser  # Установит имя пользователя
+    - RABBITMQ_DEFAULT_PASS=mypassword
     ports:
       - "5672:5672"    # AMQP порт
       - "15672:15672"  # веб-интерфейс управления RabbitMQ
@@ -107,7 +112,7 @@ services:
       dockerfile: Dockerfile
     container_name: frontend
     ports:
-      - "3001:3000"
+      - "3000:3000"
     depends_on:
       - gateway
       - search-service
@@ -128,15 +133,44 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     ports:
-      - "3000:3000"
+      - "3001:3000"
     networks:
       - app-network
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./monitoring/loki-config.yaml:/etc/loki/config.yml
+      - loki-data:/loki
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: promtail
+    user: "0:0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./monitoring/promtail-config.yaml:/etc/promtail/config.yml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/log:/var/log:ro 
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - app-network
+    depends_on:
+      - loki
+    restart: unless-stopped
 
 volumes:
   esdata:
     driver: local
   pgdata:
     driver: local
+  loki-data:
   grafana-storage:
 
 networks:
