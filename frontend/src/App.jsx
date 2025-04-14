@@ -1,22 +1,26 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import Results from './Results'; // Изменил 'components.results' на относительный путь './Results'
+import Results from './components/results';
 
 function App() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [error, setError] = useState(null);
+  const [documentTitle, setDocumentTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [author, setAuthor] = useState('');
 
   const handleSearch = async (event) => {
     event.preventDefault();
     try {
       const graphqlQuery = {
         query: `
-          query SearchArticles($q: String!) {
+          query Search($q: String!) {
             search(q: $q) {
               id
               title
               content
+              author
             }
           }
         `,
@@ -25,9 +29,7 @@ function App() {
         }
       };
 
-      // Отправляем POST-запрос на GraphQL endpoint микросервиса gateway
       const response = await axios.post('http://localhost:8000/graphql', graphqlQuery);
-      // Предполагается, что ответ имеет структуру: { data: { search: [...] } }
       setResults(response.data.data.search);
       setError(null);
     } catch (err) {
@@ -37,9 +39,77 @@ function App() {
     }
   };
 
+  const createDocument = async (event) => {
+    event.preventDefault();
+    try {
+      const graphqlMutation = {
+        query: `
+          mutation CreateDocument($title: String!, $content: String!, $author: String) {
+            createDocument(title: $title, content: $content, author: $author) {
+              id
+              title
+              content
+              author
+            }
+          }
+        `,
+        variables: {
+          title: documentTitle,
+          content: content,
+          author: author || null
+        }
+      };
+
+      const response = await axios.post('http://localhost:8000/graphql', graphqlMutation);
+      
+      if (response.data.errors) {
+        throw new Error(response.data.errors[0].message);
+      }
+
+      setError(null);
+      alert('Документ успешно создан!');
+      // Очищаем форму после успешного создания
+      setDocumentTitle('');
+      setContent('');
+      setAuthor('');
+    } catch (err) {
+      console.error(err);
+      setError('Ошибка при создании документа: ' + err.message);
+    }
+  };
+
   return (
     <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
-      <h1>Поиск статей</h1>
+      <h1>Добавить документ</h1>
+      <form onSubmit={createDocument}>
+        <input
+          type="text"
+          placeholder="Введите название документа"
+          value={documentTitle}
+          onChange={(e) => setDocumentTitle(e.target.value)}
+          style={{ padding: "0.5rem", width: "300px", display: "block", marginBottom: "0.5rem" }}
+          required
+        />
+        <textarea
+          placeholder="Введите содержание документа"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          style={{ padding: "0.5rem", width: "300px", display: "block", marginBottom: "0.5rem", minHeight: "100px" }}
+          required
+        />
+        <input
+          type="text"
+          placeholder="Введите автора (необязательно)"
+          value={author}
+          onChange={(e) => setAuthor(e.target.value)}
+          style={{ padding: "0.5rem", width: "300px", display: "block", marginBottom: "0.5rem" }}
+        />
+        <button type="submit" style={{ padding: "0.5rem" }}>
+          Создать документ
+        </button>
+      </form>
+
+      <h1>Поиск документов</h1>
       <form onSubmit={handleSearch}>
         <input
           type="text"
@@ -52,42 +122,11 @@ function App() {
           Найти
         </button>
       </form>
+
+      {error && <div style={{ color: "red", margin: "1rem 0" }}>{error}</div>}
       <Results results={results} />
     </div>
   );
-}
-
-import { collectDefaultMetrics } from 'prom-client';
-
-// Конфигурация клиентских метрик
-const collectMetrics = () => {
-  if (typeof window !== 'undefined') { // Проверяем, что код выполняется в браузере
-    const client = require('prom-client');
-    
-    // Сбрасываем предыдущие метрики
-    client.register.clear();
-    
-    // Собираем стандартные метрики
-    client.collectDefaultMetrics({
-      prefix: 'react_app_',
-      gcDurationBuckets: [0.001, 0.01, 0.1, 1, 2, 5], // настройки для сборщика мусора
-      register: client.register
-    });
-
-    // Отправляем метрики на сервер каждые 10 секунд
-    setInterval(() => {
-      fetch('http://localhost:4000/metrics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: client.register.metrics()
-      }).catch(console.error);
-    }, 10000);
-  }
-};
-
-// Инициализация при загрузке приложения
-if (typeof window !== 'undefined') {
-  collectMetrics();
 }
 
 export default App;
