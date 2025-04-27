@@ -44,7 +44,10 @@ services:
     ports:
       - "8001:8001"
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTICSEARCH_HOST=http://elasticsearch:9200
     networks:
       - app-network
 
@@ -78,6 +81,12 @@ services:
       - esdata:/usr/share/elasticsearch/data
     networks:
       - app-network
+    healthcheck:
+      test: curl -f http://localhost:9200/_cluster/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   postgres:
     image: postgres:13
@@ -118,6 +127,7 @@ services:
       - search-service
     networks:
       - app-network
+    dns: 8.8.8.8
 
   prometheus:
     image: prom/prometheus:v2.37.0

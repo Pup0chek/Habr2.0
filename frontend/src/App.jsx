@@ -30,6 +30,11 @@ function App() {
       };
 
       const response = await axios.post('http://localhost:8000/graphql', graphqlQuery);
+      
+      if (response.data.errors) {
+        throw new Error(response.data.errors[0].message);
+      }
+
       setResults(response.data.data.search);
       setError(null);
     } catch (err) {
@@ -67,8 +72,9 @@ function App() {
       }
 
       setError(null);
-      alert('Документ успешно создан!');
-      // Очищаем форму после успешного создания
+      alert('Документ успешно создан! ID: ' + response.data.data.createDocument.id);
+      
+      // Очищаем форму
       setDocumentTitle('');
       setContent('');
       setAuthor('');
